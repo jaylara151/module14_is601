@@ -191,8 +191,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const errorMessage = document.getElementById('errorMessage');
     errorMessage.textContent = msg;
     errorAlert.classList.remove('hidden');
-    
-    // Auto hide after 5 seconds
+
     setTimeout(() => {
       errorAlert.classList.add('opacity-0');
       setTimeout(() => {
@@ -200,18 +199,16 @@ document.addEventListener('DOMContentLoaded', function() {
         errorAlert.classList.remove('opacity-0');
       }, 300);
     }, 5000);
-    
-    // Scroll to the error message if not visible
+
     errorAlert.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
-  
+
   function showSuccess(msg) {
     const successAlert = document.getElementById('successAlert');
     const successMessage = document.getElementById('successMessage');
     successMessage.textContent = msg;
     successAlert.classList.remove('hidden');
-    
-    // Auto hide after 5 seconds
+
     setTimeout(() => {
       successAlert.classList.add('opacity-0');
       setTimeout(() => {
@@ -219,29 +216,50 @@ document.addEventListener('DOMContentLoaded', function() {
         successAlert.classList.remove('opacity-0');
       }, 300);
     }, 5000);
-    
-    // Scroll to the success message if not visible
+
     successAlert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function parseApiError(errorData, fallbackMessage) {
+    let errorMessage = fallbackMessage;
+
+    if (typeof errorData?.detail === 'string') {
+      errorMessage = errorData.detail;
+    } else if (Array.isArray(errorData?.detail)) {
+      errorMessage = errorData.detail
+        .map(err => err.msg || 'Validation error')
+        .join(', ');
+    } else if (errorData?.detail && typeof errorData.detail === 'object') {
+      errorMessage = errorData.detail.msg || JSON.stringify(errorData.detail);
+    }
+
+    return errorMessage;
   }
 
   // Load the calculations from the API
   async function loadCalculations() {
     try {
       const tableBody = document.getElementById('calculationsTable');
-      // Show loading indicator
       document.getElementById('loadingRow')?.classList.remove('hidden');
-      
+
       const response = await fetch('/calculations', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       if (!response.ok) {
         if (response.status === 401) {
           localStorage.clear();
           window.location.href = '/login';
           return;
         }
-        throw new Error('Failed to load calculations');
+
+        let errorMessage = 'Failed to load calculations';
+        try {
+          const errorData = await response.json();
+          errorMessage = parseApiError(errorData, errorMessage);
+        } catch (_) {}
+
+        throw new Error(errorMessage);
       }
 
       const calculations = await response.json();
@@ -267,13 +285,12 @@ document.addEventListener('DOMContentLoaded', function() {
       calculations.forEach(calc => {
         const row = document.createElement('tr');
         row.classList.add('hover:bg-gray-50', 'transition-colors');
-        
-        // Format the date nicely
+
         const calcDate = new Date(calc.created_at);
         const dateOptions = { year: 'numeric', month: 'short', day: 'numeric' };
         const formattedDate = calcDate.toLocaleDateString(undefined, dateOptions);
         const formattedTime = calcDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-        
+
         row.innerHTML = `
           <td class="px-6 py-4 text-gray-800 whitespace-nowrap">
             <span class="font-medium capitalize">${calc.type}</span>
@@ -292,29 +309,20 @@ document.addEventListener('DOMContentLoaded', function() {
           </td>
           <td class="px-6 py-4">
             <div class="flex space-x-3">
-              <a 
-                href="/dashboard/view/${calc.id}"
-                class="text-blue-700 hover:text-blue-800 font-medium flex items-center"
-              >
+              <a href="/dashboard/view/${calc.id}" class="text-blue-700 hover:text-blue-800 font-medium flex items-center">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                 </svg>
                 View
               </a>
-              <a 
-                href="/dashboard/edit/${calc.id}"
-                class="text-gray-700 hover:text-gray-800 font-medium flex items-center"
-              >
+              <a href="/dashboard/edit/${calc.id}" class="text-gray-700 hover:text-gray-800 font-medium flex items-center">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                 </svg>
                 Edit
               </a>
-              <button 
-                class="text-red-600 hover:text-red-800 font-medium delete-calc flex items-center"
-                data-id="${calc.id}"
-              >
+              <button class="text-red-600 hover:text-red-800 font-medium delete-calc flex items-center" data-id="${calc.id}">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                 </svg>
@@ -326,24 +334,23 @@ document.addEventListener('DOMContentLoaded', function() {
         tableBody.appendChild(row);
       });
 
-      // Attach delete handlers
       document.querySelectorAll('.delete-calc').forEach(btn => {
         btn.addEventListener('click', async (e) => {
           if (!confirm('Are you sure you want to delete this calculation?')) return;
 
-          const calcId = e.target.closest('.delete-calc').dataset.id;
-          
-          // Show loading spinner in the button
-          const originalContent = e.target.closest('.delete-calc').innerHTML;
-          e.target.closest('.delete-calc').innerHTML = '<svg class="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Deleting...';
-          e.target.closest('.delete-calc').disabled = true;
-          
+          const button = e.target.closest('.delete-calc');
+          const calcId = button.dataset.id;
+          const originalContent = button.innerHTML;
+
+          button.innerHTML = '<svg class="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Deleting...';
+          button.disabled = true;
+
           try {
             const delResp = await fetch(`/calculations/${calcId}`, {
               method: 'DELETE',
               headers: { 'Authorization': `Bearer ${token}` }
             });
-            
+
             if (!delResp.ok) {
               if (delResp.status === 401) {
                 localStorage.clear();
@@ -352,29 +359,27 @@ document.addEventListener('DOMContentLoaded', function() {
               }
               throw new Error('Failed to delete calculation');
             }
-            
+
             showSuccess('Calculation deleted successfully');
-            // Fade out the row before removing it
-            const row = e.target.closest('tr');
+            const row = button.closest('tr');
             row.style.transition = 'opacity 0.5s';
             row.style.opacity = '0';
+
             setTimeout(() => {
               loadCalculations();
             }, 500);
-            
+
           } catch (err) {
-            // Restore the button
-            e.target.closest('.delete-calc').innerHTML = originalContent;
-            e.target.closest('.delete-calc').disabled = false;
-            
+            button.innerHTML = originalContent;
+            button.disabled = false;
             showError(err.message || 'Error deleting calculation');
           }
         });
       });
+
     } catch (err) {
       showError(err.message || 'Error loading calculations');
-      
-      // Show error state in the table
+
       const tableBody = document.getElementById('calculationsTable');
       tableBody.innerHTML = `
         <tr>
@@ -391,8 +396,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </td>
         </tr>
       `;
-      
-      // Add retry button functionality
+
       document.getElementById('retryButton')?.addEventListener('click', loadCalculations);
     }
   }
@@ -400,11 +404,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // Handle form submission for new calculation
   document.getElementById('calculationForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    
+
     const form = e.target;
     const submitButton = form.querySelector('button[type="submit"]');
     const originalButtonContent = submitButton.innerHTML;
-    
+
     const inputsVal = document.getElementById('calcInputs').value;
     const inputs = inputsVal.split(',')
       .map(num => parseFloat(num.trim()))
@@ -412,16 +416,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (inputs.length < 2) {
       showError('Please enter at least two valid numbers, separated by commas');
-      
-      // Highlight the input field with an error state
+
       const inputField = document.getElementById('calcInputs');
       inputField.classList.add('border-red-500');
       inputField.focus();
-      
-      // Remove error highlight after 3 seconds or when user types
+
       setTimeout(() => inputField.classList.remove('border-red-500'), 3000);
       inputField.addEventListener('input', () => inputField.classList.remove('border-red-500'), { once: true });
-      
+
       return;
     }
 
@@ -430,7 +432,6 @@ document.addEventListener('DOMContentLoaded', function() {
       inputs
     };
 
-    // Show loading state in the button
     submitButton.disabled = true;
     submitButton.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Calculating...';
 
@@ -443,26 +444,29 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         body: JSON.stringify(newCalc)
       });
-      
+
       if (!response.ok) {
         if (response.status === 401) {
           localStorage.clear();
           window.location.href = '/login';
           return;
         }
-        
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to create calculation');
+
+        let errorMessage = 'Failed to create calculation';
+        try {
+          const errorData = await response.json();
+          errorMessage = parseApiError(errorData, errorMessage);
+        } catch (_) {}
+
+        throw new Error(errorMessage);
       }
-      
-      // Get the created calculation data
+
       const result = await response.json();
-      
+
       showSuccess(`Calculation complete: ${result.result}`);
       form.reset();
       loadCalculations();
-      
-      // Add a highlight effect to the table to draw attention to the new entry
+
       setTimeout(() => {
         const tableBody = document.getElementById('calculationsTable');
         if (tableBody.firstChild) {
@@ -472,11 +476,10 @@ document.addEventListener('DOMContentLoaded', function() {
           }, 2000);
         }
       }, 500);
-      
+
     } catch (error) {
       showError(error.message || 'Error creating calculation');
     } finally {
-      // Restore button state
       submitButton.disabled = false;
       submitButton.innerHTML = originalButtonContent;
     }
@@ -484,17 +487,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Initial load
   loadCalculations();
-  
-  // Optional features:
-  
-  // 1. Auto-refresh every 30 seconds
-  // const refreshInterval = setInterval(loadCalculations, 30000);
-  
-  // 2. Add clear form button
+
+  // Clear input button
   const calcInputs = document.getElementById('calcInputs');
   calcInputs.addEventListener('input', function() {
     if (this.value.trim() !== '') {
-      // Show clear button when there's input
       if (!this.nextElementSibling || !this.nextElementSibling.classList.contains('clear-button')) {
         const clearButton = document.createElement('button');
         clearButton.type = 'button';
@@ -505,13 +502,11 @@ document.addEventListener('DOMContentLoaded', function() {
           this.focus();
           clearButton.remove();
         });
-        
-        // Make sure the input's parent is position relative
+
         this.parentElement.style.position = 'relative';
         this.parentElement.appendChild(clearButton);
       }
     } else if (this.nextElementSibling && this.nextElementSibling.classList.contains('clear-button')) {
-      // Remove clear button when input is empty
       this.nextElementSibling.remove();
     }
   });
